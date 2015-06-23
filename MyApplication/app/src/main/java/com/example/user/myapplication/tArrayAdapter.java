@@ -34,7 +34,7 @@ public class tArrayAdapter extends ArrayAdapter<WifiInfot> {
             LayoutInflater inflater = ((Activity)context).getLayoutInflater();
             item = inflater.inflate(id,parent,false);
             tw = new textWrapper();
-            tw.ssid = (TextView)item.findViewById(R.id.text);
+            //tw.ssid = (TextView)item.findViewById(R.id.text);
             item.setTag(tw);
         }
         else {tw = (textWrapper)item.getTag();}

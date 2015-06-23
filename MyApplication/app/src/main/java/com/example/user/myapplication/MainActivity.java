@@ -1,10 +1,23 @@
 package com.example.user.myapplication;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.net.Uri;
+import android.os.Environment;
+import android.os.Handler;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -16,12 +29,12 @@ import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.Message;
 import android.support.v7.app.ActionBarActivity;
-import android.telephony.TelephonyManager;
-import android.view.LayoutInflater;
+
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.BaseAdapter;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ListView;
@@ -37,158 +50,201 @@ private TextView out;
 private WifiManager wifi_manager;
 private WifiReceiver wifi_receiver;
 int num = 0;
-Button [] list_button = new Button[num];
-LinearLayout linear;
 ListView listview;
 tArrayAdapter ta;
 ArrayList<WifiInfot> wifiarray = new ArrayList<WifiInfot>();
 BluetoothAdapter mblue = BluetoothAdapter.getDefaultAdapter();
 private UUID uuid = UUID.fromString("00000000-0000-1000-8000-00805F9B34FB");
 BluetoothDevice device1;
-SimpleAdapter adapter;
 Button button = null;
-
+final int MESSAGE_READ = 1;
+public Handler mHandler;
+private static final int DISCOVER_DURATION = 300;
+private static final int REQEST_BLU = 1;
+String path = "/storage/emulated/0/Download/test.txt";
+int fre = 1;
+String ch = "no";
+String[] value = new String[]{};
+ArrayList<String> list = new ArrayList<String>();
+ArrayList<String> bssid = new ArrayList<String>();
+ArrayList<String> channel = new ArrayList<String>();
+int set=1000;
+ArrayAdapter arrayAdapter;
 
 /** Called when the activity is first created. */
-	 @Override
-	  public void onCreate(Bundle savedInstanceState) {
-	  super.onCreate(savedInstanceState);
-	  setContentView(R.layout.activity_main);
-
-/**Test ArrayList*/
-/*         wifiarray.add(new WifiInfot("yo"));
-
-         ta = new tArrayAdapter(MainActivity.this,R.layout.list_item,wifiarray);
-         listview = (ListView) findViewById(R.id.list);
-         listview.setAdapter(ta);*/
-
-      /**Register receiver*/
-         //IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-         //registerReceiver(filter);
-
-      /**Open Bluetooth*/
-      button = (Button)findViewById(R.id.button);
-      button.setOnClickListener(new Button.OnClickListener(){
-             @Override
-             public void onClick(View v){
-                 /** checking bluetooth*/
-                 if(mblue!=null) {
-                     if (!mblue.isEnabled()) {
-                         Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-                         startActivityForResult(enableIntent, 12);
-                         mblue.enable();
-                     } else {
-                         //mblue.disable();
-                     }
-                 }
-                 else{System.out.print("no");}
-                 out = (TextView) findViewById(R.id.text2);
-                 out.append(mblue.getName()+"\n"+mblue.getAddress());
-                 mblue.startDiscovery();
-                 out.append("\nDevices:");
-                 Set<BluetoothDevice> devices = mblue.getBondedDevices();
-                 //BluetoothDevice device1 ;
-                 //String t;
-                 for(BluetoothDevice device : devices){
-                     out.append("Found device:"+device.getName()+"\t"+device.getAddress());
-                     device1 = mblue.getRemoteDevice(device.getAddress());
-                     //t = device.getAddress();
-                 }
-                 //device1 = mblue.getRemoteDevice(t);
-                 try{
-                     BluetoothSocket client = device1.createInsecureRfcommSocketToServiceRecord(uuid);
-                     client.connect();
-                 }catch(IOException e){}
-             }
-         });
-
-         /**Find Server*/
-/*         IntentFilter intent = new IntentFilter();
-         intent.addAction(BluetoothDevice.ACTION_FOUND);
-         intent.addAction(BluetoothAdapter.ACTION_SCAN_MODE_CHANGED);
-         intent.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
-         //registerReceiver();*/
+@Override
+public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+	setContentView(R.layout.activity_main);
 
 
 
       /** Get Wifi information*/
-         search_result = (TextView) findViewById(R.id.text);
+         //search_result = (TextView) findViewById(R.id.text);
+
          wifi_manager = (WifiManager) getSystemService(Context.WIFI_SERVICE);
          wifi_receiver = new WifiReceiver();
          registerReceiver(wifi_receiver, new IntentFilter(
-         WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+                 WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
          wifi_manager.startScan();
-         search_result.setText("Now Loading...\n");
+         //search_result.setText("Now Loading...\n");
+
+    listview = (ListView) findViewById(R.id.list);
+    arrayAdapter = new ArrayAdapter(this,android.R.layout.simple_spinner_item,list);
+    listview.setAdapter(arrayAdapter);
+    listview.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        @Override
+        public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+            set = position;
+            sendFile(view);
+        }
+    });
 
 
-         /**Dynamic list of textView*/
-         //adapter = new tAdapter();
-         //for(int i = 0;i<50;i++){
-           //  adapter.addItem("item"+i);
-         //}
  }
-
-/*        BroadcastReceiver mr = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-
-            }
-        };*/
 
 	   class WifiReceiver extends BroadcastReceiver {
           @Override
 		  public void onReceive(Context context, Intent intent) {
-	         StringBuffer sb = new StringBuffer();
-             String s ;
+
 	         List<ScanResult> result_list = wifi_manager.getScanResults();
+
 		     for (int i = 0; i < result_list.size(); i++) {
-                sb.append(Integer.toString(i+1) + ".");
-                 //creat_button(i,sb.append(result_list.get(i).SSID));
-                 sb.append(result_list.get(i).SSID);
-                 sb.append(result_list.get(i).BSSID);
-	            sb.append((result_list.get(i)).toString());
-	            sb.append("\n");
-                //wifiarray.add(new WifiInfo(result_list.get(i).SSID));
+                 list.add(result_list.get(i).SSID);
+                 listview.setAdapter(arrayAdapter);
+                 bssid.add(result_list.get(i).BSSID);
+                 int count = 0;
+                 for(int j=2412;j<=result_list.get(i).frequency;j+=5){count++;}
+                 if(count>13){channel.add("We only support 2.4G");}
+                 else{channel.add(Integer.toString(count));}
 	         }
-
-              /**Use ArrayList to construct clickable text*/
-              /*ta = new tArrayAdapter(MainActivity.this,R.layout.list_item,wifiarray);
-                                listview = (ListView) findViewById(R.id.list);
-                                listview.setItemsCanFocus(false);
-                                listview.setAdapter(ta);*/
-
-
-	         search_result.setText(sb);
-             num = result_list.size();
 		  }
 	   }
 
+    public void sendFile(View v){
+        BluetoothAdapter bAdatapter = BluetoothAdapter.getDefaultAdapter();
+        if (bAdatapter == null){
+            Toast.makeText(this,"not support",Toast.LENGTH_LONG).show();
+        }else{
+            enableBuletooth();
+        }
+    }
 
-/*        private void creat_button(int i,StringBuffer x){
-            linear = (LinearLayout) findViewById(R.id.linear);
-                list_button[i] = new Button(this);
-                list_button[i].setHeight(50);
-                list_button[i].setWidth(50);
-                list_button[i].setTag(i);
-                list_button[i].setText(x);
-                list_button[i].setOnClickListener(buttonListenter);
-                linear.addView(list_button[i]);
-        }*/
+    public void enableBuletooth(){
+        Intent discoveryIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+        discoveryIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION,DISCOVER_DURATION);
+        startActivityForResult(discoveryIntent, REQEST_BLU);
+    }
 
-/*        private View.OnClickListener buttonListenter = new View.OnClickListener() {
-           @Override
-           public void onClick(View v){
-               Object tag = v.getTag();
-               Toast.makeText(getApplicationContext(),"clicked button",Toast.LENGTH_SHORT).show();
-           }
-        };*/
+   // @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data){
+        if(resultCode == DISCOVER_DURATION && requestCode == REQEST_BLU && set != 1000){
+            Intent intent = new Intent();
+            intent.setAction(Intent.ACTION_SEND);
+            intent.setType("text/plain");
+
+            File f = new File("/storage/emulated/0/Download","test.txt");
+
+            try {
+                FileWriter fw = new FileWriter(path, false);
+                BufferedWriter bw = new BufferedWriter(fw);
+                bw.write(list.get(set).toString());
+                bw.newLine();
+                bw.write(bssid.get(set).toString());
+                bw.newLine();
+                bw.write(channel.get(set).toString());
+                bw.close();
+            }catch (IOException e){}
+
+            intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(f));
+
+            PackageManager pm = getPackageManager();
+            List<ResolveInfo> appList = pm.queryIntentActivities(intent,0);
+
+            if(appList.size() > 0){
+                String packName = null;
+                String className = null;
+                boolean found = false;
+
+                for(ResolveInfo info : appList){
+                    packName = info.activityInfo.packageName;
+                    if(packName.equals("com.android.bluetooth")){
+                        className = info.activityInfo.name;
+                        found = true;
+                        break;
+                    }
+
+                }
+                if(!found){
+                    Toast.makeText(this,"Bluetooth havn't been found",Toast.LENGTH_SHORT).show();
+                }else{
+                    intent.setClassName(packName,className);
+
+                    startActivity(intent);
+                }
+            }
+            else{
+                Toast.makeText(this,"Bluetooth is cancelled",Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    /*public void connect(View v){
+        *//** checking bluetooth*//*
+        if(mblue!=null) {
+            if (!mblue.isEnabled()) {
+                Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+                startActivityForResult(enableIntent, 12);
+                mblue.enable();
+            } else {
+                //mblue.disable();
+            }
+        }
+        else{System.out.print("no");}
+        out = (TextView) findViewById(R.id.text2);
+        out.append(mblue.getName()+"\n"+mblue.getAddress());
+        mblue.startDiscovery();
+        out.append("\nDevices:");
+        Set<BluetoothDevice> devices = mblue.getBondedDevices();
+        String t = new String();
+        for(BluetoothDevice device : devices){
+            out.append("Found device:"+device.getName()+"\t"+device.getAddress());
+            t = device.getAddress();
+        }
+        device1 = mblue.getRemoteDevice(t);
+        //out.append(t);
+        try {
+            FileOutputStream output = new FileOutputStream(path);
+        }catch (IOException e){out.setText("create error");}
 
 
-/*
+*//*                String s = "Hello";
+                 try {
+                     connectedThread = new ConnectedThread(device1.createInsecureRfcommSocketToServiceRecord(uuid));
+                     //connectedThread.run();
+                     out.append("\nyo");
+                     //connectedThread.write(s.getBytes());
+                 }catch (IOException e){
+                     connectedThread.cancel();
+                 }*//*
+        //connectThread.run();
+
+        //BluetoothSocket client ;
+*//*                 try{
+                     client = device1.createInsecureRfcommSocketToServiceRecord(uuid);
+
+                    // client.connect();
+                 }catch(IOException e){
+                     //client.close();
+                     out.append("\nConnect error");
+                 }*//*
+    }*/
+
+
     private class ConnectThread extends Thread {
         private final BluetoothSocket mmSocket;
         private final BluetoothDevice mmDevice;
-        TelephonyManager tManager = (TelephonyManager)getSystemService(Context.TELEPHONY_SERVICE);
+        //TelephonyManager tManager = (TelephonyManager)getSystemService(Context.TELEPHONY_SERVICE);
         //UUID uuid = (UUID)tManager.getDeviceId();
 
         public ConnectThread(BluetoothDevice device) {
@@ -228,10 +284,7 @@ Button button = null;
             //manageConnectedSocket(mmSocket);
         }
 
-        */
-/**
-         * Will cancel an in-progress connection, and close the socket
-         *//*
+        /*** Will cancel an in-progress connection, and close the socket*/
 
         public void cancel() {
             try {
@@ -241,7 +294,59 @@ Button button = null;
         }
     }
 
-*/
+    private class ConnectedThread extends Thread {
+        private final BluetoothSocket mmSocket;
+        private final InputStream mmInStream;
+        private final OutputStream mmOutStream;
+
+        public ConnectedThread(BluetoothSocket socket) {
+            mmSocket = socket;
+            InputStream tmpIn = null;
+            OutputStream tmpOut = null;
+
+            // Get the input and output streams, using temp objects because
+            // member streams are final
+            try {
+                tmpIn = socket.getInputStream();
+                tmpOut = socket.getOutputStream();
+            } catch (IOException e) { }
+
+            mmInStream = tmpIn;
+            mmOutStream = tmpOut;
+        }
+
+        public void run() {
+            byte[] buffer = new byte[1024];  // buffer store for the stream
+            int bytes; // bytes returned from read()
+
+            // Keep listening to the InputStream until an exception occurs
+            while (true) {
+                try {
+                    // Read from the InputStream
+                    bytes = mmInStream.read(buffer);
+                    // Send the obtained bytes to the UI activity
+                    mHandler.obtainMessage(MESSAGE_READ, bytes, -1, buffer).sendToTarget();
+                } catch (IOException e) {
+                    break;
+                }
+            }
+        }
+
+        /* Call this from the main activity to send data to the remote device */
+        public void write(byte[] bytes) {
+            try {
+                mmOutStream.write(bytes);
+            } catch (IOException e) {out.setText("write error"); }
+        }
+
+        /* Call this from the main activity to shutdown the connection */
+        public void cancel() {
+            try {
+                mmSocket.close();
+            } catch (IOException e) { }
+        }
+    }
+
 
 }
 
